@@ -325,6 +325,41 @@ export function updateProg(map, track, urls, pos, dur, now, next) {
   }
   return out;
 }
+export function markLaunched(map, track, urls, now) {
+  const ex = map[track.key];
+  if (ex && ex.done) return map;
+  const out = { ...map };
+  for (const k of Object.keys(out)) {
+    if (out[k].nextUp && out[k].itemId === track.itemId && k !== track.key) delete out[k];
+  }
+  out[track.key] = ex && ex.dur > 0 ? { ...ex, ...track, urls, ts: now } : { ...track, urls, pos: 0, dur: 0, ts: now, ext: true };
+  return out;
+}
+export function markWatched(map, track, urls, now, next) {
+  const out = { ...map };
+  for (const k of Object.keys(out)) {
+    if (out[k].nextUp && out[k].itemId === track.itemId && k !== track.key) delete out[k];
+  }
+  const ex = map[track.key];
+  const dur = ex && ex.dur > 0 ? ex.dur : 1;
+  out[track.key] = { ...track, urls, pos: dur, dur, ts: now, done: true };
+  if (next && track.kind === "serie") {
+    const nx = out[next.track.key];
+    if (!nx) out[next.track.key] = { ...next.track, urls: next.urls, pos: 0, dur: 0, ts: now, nextUp: true };
+  }
+  return out;
+}
+export function unmarkWatched(map, key) {
+  const cur = map[key];
+  if (!cur) return map;
+  const out = {};
+  for (const k of Object.keys(map)) {
+    if (k === key) continue;
+    if (map[k].nextUp && map[k].itemId === cur.itemId) continue;
+    out[k] = map[k];
+  }
+  return out;
+}
 export function continueList(map, limit = 20) {
   const all = Object.keys(map).map((k) => map[k]).filter((p) => !p.done).sort((a, b) => b.ts - a.ts);
   const seen = {};
@@ -576,7 +611,7 @@ function ContinueRail({
         contentContainerStyle={{ paddingHorizontal: 16 }}
         renderItem={({ item: { rec, item } }) => {
           const pct = rec.dur > 0 ? rec.pos / rec.dur : 0;
-          const sub = rec.nextUp ? `\xC0 suivre \xB7 ${rec.label}` : rec.label ? `${rec.label} \xB7 ${remainingLabel(rec.pos, rec.dur)}` : remainingLabel(rec.pos, rec.dur);
+          const sub = rec.ext ? `Dans VLC${rec.label ? " \xB7 " + rec.label : ""}` : rec.nextUp ? `\xC0 suivre \xB7 ${rec.label}` : rec.label ? `${rec.label} \xB7 ${remainingLabel(rec.pos, rec.dur)}` : remainingLabel(rec.pos, rec.dur);
           return <Pressable onPress={() => onPlay(rec)} style={{ width: 232 }}>
               <View style={styles.cwBox}>
                 <LinearGradient
@@ -686,6 +721,7 @@ function PlayerModal({
   next,
   onProgress,
   onNext,
+  onVlc,
   onClose
 }) {
   const insets = useSafeAreaInsets();
@@ -826,13 +862,7 @@ function PlayerModal({
               </Pressable>
               {Platform.OS === "ios" ? <Pressable
                 style={styles.btnSec}
-                onPress={() => {
-                  const u = req.urls.find((x) => /\.mkv(\?|$)/i.test(x)) || req.urls[0];
-                  Linking.openURL("vlc-x-callback://x-callback-url/stream?url=" + encodeURIComponent(u)).catch(
-                    () => Linking.openURL("https://apps.apple.com/app/vlc-for-mobile/id650377962").catch(() => {
-                    })
-                  );
-                }}
+                onPress={() => onVlc(req)}
               >
                   <T style={styles.btnTxt}>Ouvrir dans VLC</T>
                 </Pressable> : null}
@@ -856,6 +886,7 @@ function DetailModal({
   onFav,
   onPlay,
   onOpen,
+  onMark,
   onClose
 }) {
   const insets = useSafeAreaInsets();
@@ -909,7 +940,7 @@ function DetailModal({
     primary = { label: resumeFilm ? `Reprendre \xB7 ${fmtClock(resumeFilm.pos)}` : "Lecture", run: () => onPlay(filmReq(item, false, prog)) };
   } else if (isSeries && serRec) {
     primary = {
-      label: serRec.nextUp ? `Lecture ${serRec.label}` : `Reprendre ${serRec.label} \xB7 ${fmtClock(serRec.pos)}`,
+      label: serRec.nextUp ? `Lecture ${serRec.label}` : serRec.ext ? `Continuer ${serRec.label}` : `Reprendre ${serRec.label} \xB7 ${fmtClock(serRec.pos)}`,
       run: () => onPlay(recReq(serRec))
     };
   } else if (isSeries && firstEp) {
@@ -962,6 +993,14 @@ function DetailModal({
             </Pressable> : null}
 
           <View style={styles.actRow}>
+            {!isSeries && item.urls ? <Pressable
+              onPress={() => onMark({ key: item.id, itemId: item.id, sid: item.sid, kind: "film", title: item.title }, item.urls, null, !(filmRec && filmRec.done))}
+              style={styles.act}
+              accessibilityLabel="Marquer comme vu"
+            >
+                <Ionicons name={filmRec && filmRec.done ? "checkmark-circle" : "eye-outline"} size={28} color={filmRec && filmRec.done ? "#5ad18a" : "#fff"} />
+                <T style={styles.actTxt}>{filmRec && filmRec.done ? "Vu" : "Marquer vu"}</T>
+              </Pressable> : null}
             <Pressable onPress={onFav} style={styles.act} accessibilityLabel="Ma liste">
               <Ionicons name={fav ? "checkmark" : "add"} size={28} color="#fff" />
               <T style={styles.actTxt}>Ma liste</T>
@@ -1008,7 +1047,16 @@ function DetailModal({
                         </T>
                         <T style={{ color: C.muted, fontSize: 13 }}>{fmtDurLabel(e.dur)}</T>
                       </View>
-                      {r && r.done ? <Ionicons name="checkmark-circle" size={22} color="#5ad18a" /> : null}
+                      <Pressable
+                        hitSlop={10}
+                        onPress={() => {
+                          const nx = nextEpisode(seasons, e.id);
+                          onMark(epTrack(item, e), withFallbacks(e.url), nx ? { track: epTrack(item, nx), urls: withFallbacks(nx.url) } : null, !(r && r.done));
+                        }}
+                        accessibilityLabel="Marquer comme vu"
+                      >
+                        <Ionicons name={r && r.done ? "checkmark-circle" : "ellipse-outline"} size={24} color={r && r.done ? "#5ad18a" : C.muted} />
+                      </Pressable>
                     </View>
                     {e.plot ? <T style={{ color: C.muted, fontSize: 13, lineHeight: 18 }} numberOfLines={3}>
                         {e.plot}
@@ -1304,6 +1352,31 @@ function Root() {
     });
     if (commit) setProg(upd);
   }, []);
+  const saveProg = useCallback((upd) => {
+    progRef.current = upd;
+    setProg(upd);
+    AsyncStorage.setItem("p4k-progress", JSON.stringify(upd)).catch(() => {
+    });
+  }, []);
+  const openVlc = useCallback(
+    (req) => {
+      const u = req.urls.find((x) => /\.mkv(\?|$)/i.test(x)) || req.urls[0];
+      if (req.track) saveProg(markLaunched(progRef.current, req.track, req.urls, Date.now()));
+      setPlaying(null);
+      setNextReq(null);
+      Linking.openURL("vlc-x-callback://x-callback-url/stream?url=" + encodeURIComponent(u)).catch(
+        () => Linking.openURL("https://apps.apple.com/app/vlc-for-mobile/id650377962").catch(() => {
+        })
+      );
+    },
+    [saveProg]
+  );
+  const onMark = useCallback(
+    (track, urls, next, on) => {
+      saveProg(on ? markWatched(progRef.current, track, urls, Date.now(), next) : unmarkWatched(progRef.current, track.key));
+    },
+    [saveProg]
+  );
   const removeContinue = useCallback((itemId) => {
     progRef.current = removeFromContinue(progRef.current, itemId);
     setProg(progRef.current);
@@ -1559,6 +1632,7 @@ function Root() {
         onFav={() => toggleFav(detail.id)}
         onPlay={play}
         onOpen={setDetail}
+        onMark={onMark}
         onClose={() => setDetail(null)}
       /> : null}
       {playing ? <PlayerModal
@@ -1566,6 +1640,7 @@ function Root() {
         req={playing}
         next={nextReq}
         onProgress={onProgress}
+        onVlc={openVlc}
         onNext={() => {
           if (nextReq) play(nextReq);
         }}
