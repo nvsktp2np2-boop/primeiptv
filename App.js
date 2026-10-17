@@ -549,9 +549,9 @@ function Rail({ title, data, onOpen }) {
         horizontal
         showsHorizontalScrollIndicator={false}
         data={data}
-        estimatedItemSize={tv ? 212 : 138}
-        keyExtractor={(i) => i.id}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 14 }}
+        ItemSeparatorComponent={() => <View style={{ width: 14 }} />}
+                keyExtractor={(i) => i.id}
+        contentContainerStyle={{ paddingHorizontal: 16 }}
         renderItem={({ item }) => <Card item={item} w={tv ? 212 : 138} onOpen={onOpen} />}
       />
     </View>;
@@ -571,9 +571,9 @@ function ContinueRail({
         horizontal
         showsHorizontalScrollIndicator={false}
         data={entries}
-        estimatedItemSize={232}
-        keyExtractor={(e) => e.rec.key}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 14 }}
+        ItemSeparatorComponent={() => <View style={{ width: 14 }} />}
+                keyExtractor={(e) => e.rec.key}
+        contentContainerStyle={{ paddingHorizontal: 16 }}
         renderItem={({ item: { rec, item } }) => {
           const pct = rec.dur > 0 ? rec.pos / rec.dur : 0;
           const sub = rec.nextUp ? `\xC0 suivre \xB7 ${rec.label}` : rec.label ? `${rec.label} \xB7 ${remainingLabel(rec.pos, rec.dur)}` : remainingLabel(rec.pos, rec.dur);
@@ -624,8 +624,7 @@ function Hero({ items, width, onOpen }) {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         data={items}
-        estimatedItemSize={width}
-        keyExtractor={(i) => i.id}
+                keyExtractor={(i) => i.id}
         onScroll={(e) => setX(e.nativeEvent.contentOffset.x)}
         scrollEventThrottle={16}
         renderItem={({ item, index }) => <Pressable onPress={() => onOpen(item)} style={{ width, height: h }}>
@@ -1465,14 +1464,18 @@ function Root() {
       key={`g${cols}`}
       data={data.slice(0, limit)}
       numColumns={cols}
-      estimatedItemSize={220}
       keyExtractor={(i) => i.id}
       ListHeaderComponent={header}
       ListEmptyComponent={<T style={{ color: C.muted, textAlign: "center", marginTop: 40 }}>Rien à afficher ici.</T>}
       contentContainerStyle={{ paddingBottom: insets.bottom + 130, paddingHorizontal: gridPad }}
       onEndReachedThreshold={0.6}
       onEndReached={() => total > limit && limit < 1200 && setLimit((l) => l + 60)}
-      renderItem={({ item }) => <Card item={item} w={w} onOpen={open} />}
+      keyboardShouldPersistTaps="handled"
+      renderItem={({ item, index }) => (
+        <View style={{ marginBottom: 18, marginLeft: index % cols === 0 ? 0 : gap / 2, marginRight: index % cols === cols - 1 ? 0 : gap / 2 }}>
+          <Card item={item} w={(width - gridPad * 2 - gap * (cols - 1)) / cols} onOpen={open} />
+        </View>
+      )}
     />;
   };
   let body;

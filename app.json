@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "funny-indigo-bacon",
+    "name": "Primeiptv4k",
     "slug": "snack-8ab9f909-70e7-4da2-8e75-621cfb3cd9d3",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -20,7 +20,8 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.primeiptv4k.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
