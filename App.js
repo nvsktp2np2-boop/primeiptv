@@ -118,7 +118,37 @@ export const yearOf = (s) => {
   const y = String(s.year || s.releaseDate || s.releasedate || s.release_date || "").slice(0, 4);
   return /^\d{4}$/.test(y) ? y : void 0;
 };
+const XSRC = {};
+class XItem {
+  constructor(id, sid, kind, title, cat, icon, xid) {
+    this.id = id;
+    this.sid = sid;
+    this.kind = kind;
+    this.title = title;
+    this.cat = cat;
+    this.icon = icon;
+    this.xid = xid;
+  }
+  // Les adresses de lecture ne sont plus stockées pour chaque entrée : elles sont reconstruites au moment de lire.
+  get urls() {
+    const s = XSRC[this.sid];
+    if (!s) return this.kind === "serie" ? void 0 : [];
+    if (this.kind === "tv") return liveUrls(s.base, s.user, s.pass, this.xid);
+    if (this.kind === "film") return withFallbacks(movieUrl(s.base, s.user, s.pass, this.xid, this.ext));
+    return void 0;
+  }
+  get hue() {
+    return hueOf(this.title);
+  }
+  get vodId() {
+    return this.kind === "film" ? this.xid : void 0;
+  }
+  get seriesId() {
+    return this.kind === "serie" ? this.xid : void 0;
+  }
+}
 export function mapXtream(sid, base, user, pass, d) {
+  XSRC[sid] = { base, user, pass };
   const names = (a) => {
     const m = {};
     (a || []).forEach((c) => {
@@ -132,51 +162,22 @@ export function mapXtream(sid, base, user, pass, d) {
   const out = [];
   for (const s of d.ls || []) {
     const id = String(s.stream_id);
-    const title = String(s.name || "Cha\xEEne");
-    out.push({
-      id: `${sid}:l:${id}`,
-      sid,
-      kind: "tv",
-      title,
-      cat: lcn[String(s.category_id)] || "Divers",
-      hue: hueOf(title),
-      icon: s.stream_icon || void 0,
-      urls: liveUrls(base, user, pass, id)
-    });
+    out.push(new XItem(`${sid}:l:${id}`, sid, "tv", String(s.name || "Cha\xEEne"), lcn[String(s.category_id)] || "Divers", s.stream_icon || void 0, id));
   }
   for (const s of d.vs || []) {
     const id = String(s.stream_id);
-    const title = String(s.name || "Film");
-    out.push({
-      id: `${sid}:v:${id}`,
-      sid,
-      kind: "film",
-      title,
-      cat: vcn[String(s.category_id)] || "Divers",
-      hue: hueOf(title),
-      icon: s.stream_icon || void 0,
-      rating: fmtRating(s.rating),
-      year: yearOf(s),
-      urls: withFallbacks(movieUrl(base, user, pass, id, s.container_extension)),
-      vodId: id
-    });
+    const it = new XItem(`${sid}:v:${id}`, sid, "film", String(s.name || "Film"), vcn[String(s.category_id)] || "Divers", s.stream_icon || void 0, id);
+    it.rating = fmtRating(s.rating);
+    it.year = yearOf(s);
+    it.ext = s.container_extension;
+    out.push(it);
   }
   for (const s of d.ss || []) {
     const id = String(s.series_id);
-    const title = String(s.name || "S\xE9rie");
-    out.push({
-      id: `${sid}:s:${id}`,
-      sid,
-      kind: "serie",
-      title,
-      cat: scn[String(s.category_id)] || "Divers",
-      hue: hueOf(title),
-      icon: s.cover || void 0,
-      plot: s.plot || void 0,
-      rating: fmtRating(s.rating),
-      year: yearOf(s),
-      seriesId: id
-    });
+    const it = new XItem(`${sid}:s:${id}`, sid, "serie", String(s.name || "S\xE9rie"), scn[String(s.category_id)] || "Divers", s.cover || void 0, id);
+    it.rating = fmtRating(s.rating);
+    it.year = yearOf(s);
+    out.push(it);
   }
   return out;
 }
