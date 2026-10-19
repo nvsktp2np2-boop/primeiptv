@@ -360,6 +360,28 @@ export function unmarkWatched(map, key) {
   }
   return out;
 }
+export function topRated(items, n = 10, minRated = 3) {
+  const rated = [];
+  for (const it of items) {
+    const r = parseFloat(it.rating);
+    if (isFinite(r) && r > 0) rated.push({ it, r });
+  }
+  if (rated.length < minRated) return [];
+  rated.sort((a, b) => b.r - a.r);
+  return rated.slice(0, n).map((x) => x.it);
+}
+export function topViewed(items, views, n = 10) {
+  const out = [];
+  for (const it of items) {
+    const v = views[it.id];
+    if (v > 0) out.push({ it, v });
+  }
+  out.sort((a, b) => b.v - a.v);
+  return out.slice(0, n).map((x) => x.it);
+}
+export function bumpView(views, id) {
+  return { ...views, [id]: (views[id] || 0) + 1 };
+}
 export function continueList(map, limit = 20) {
   const all = Object.keys(map).map((k) => map[k]).filter((p) => !p.done).sort((a, b) => b.ts - a.ts);
   const seen = {};
@@ -1248,6 +1270,7 @@ function Root() {
   const [playing, setPlaying] = useState(null);
   const [nextReq, setNextReq] = useState(null);
   const [prog, setProg] = useState({});
+  const [views, setViews] = useState({});
   const progRef = useRef({});
   const seriesCache = useRef({});
   const playingKey = useRef("");
@@ -1275,6 +1298,11 @@ function Root() {
       try {
         const f = await AsyncStorage.getItem("p4k-favs");
         if (f) setFavs(JSON.parse(f));
+      } catch {
+      }
+      try {
+        const v = await AsyncStorage.getItem("p4k-views");
+        if (v) setViews(JSON.parse(v));
       } catch {
       }
       try {
@@ -1408,6 +1436,15 @@ function Root() {
     }),
     [items]
   );
+  const topChannels = useMemo(() => topViewed(byKind.tv, views, 10), [byKind, views]);
+  const topFilms = useMemo(() => {
+    const t = topRated(byKind.film, 10);
+    return t.length ? { rated: true, list: t } : { rated: false, list: byKind.film.slice(0, 10) };
+  }, [byKind]);
+  const topSeries = useMemo(() => {
+    const t = topRated(byKind.serie, 10);
+    return t.length ? { rated: true, list: t } : { rated: false, list: byKind.serie.slice(0, 10) };
+  }, [byKind]);
   const favItems = useMemo(() => items.filter((i) => favSet.has(i.id)), [items, favSet]);
   const results = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -1459,7 +1496,15 @@ function Root() {
   );
   const open = useCallback(
     (i) => {
-      if (i.kind === "tv" && i.urls) play({ title: i.title, urls: i.urls });
+      if (i.kind === "tv" && i.urls) {
+        setViews((prev) => {
+          const n = bumpView(prev, i.id);
+          AsyncStorage.setItem("p4k-views", JSON.stringify(n)).catch(() => {
+          });
+          return n;
+        });
+        play({ title: i.title, urls: i.urls });
+      }
       else setDetail(i);
     },
     [play]
@@ -1573,9 +1618,9 @@ function Root() {
             {title(TITLES.home)}
             {hero.length ? <Hero items={hero} width={width} onOpen={open} /> : null}
             <ContinueRail entries={continueEntries} onPlay={(r) => play(recReq(r))} onRemove={removeContinue} />
-            <Rail title="Top 10 des chaînes regardées" data={byKind.tv.slice(0, 10)} onOpen={open} />
-            <Rail title="Top 10 des films du moment" data={byKind.film.slice(0, 10)} onOpen={open} />
-            <Rail title="Séries à la une" data={byKind.serie.slice(0, 10)} onOpen={open} />
+            <Rail title="Tes chaînes les plus regardées" data={topChannels} onOpen={open} />
+            <Rail title={topFilms.rated ? "Films les mieux notés" : "Films à découvrir"} data={topFilms.list} onOpen={open} />
+            <Rail title={topSeries.rated ? "Séries les mieux notées" : "Séries à découvrir"} data={topSeries.list} onOpen={open} />
             <Rail title="Ma liste" data={favItems.slice(0, 20)} onOpen={open} />
           </>}
       </ScrollView>;
